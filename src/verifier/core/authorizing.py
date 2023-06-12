@@ -8,10 +8,9 @@ EXN Message handling
 import datetime
 
 from hio.base import doing
-from keri.app import agenting
+from keri import kering
 from keri.core import coring
 from keri.help import helping
-
 
 EBA_DOCUMENT_SUBMITTER_ROLE = "EBA Document Submitter"
 
@@ -20,7 +19,24 @@ class Schema:
     ECR_SCHEMA_SAID = "EEy9PkikFcANV1l7EHukCeXqrzT1hNZjGlUk7wuMO5jw"
 
 
-class Authorizer(doing.DoDoer):
+def setup(hby, vdb, reger, cf):
+    data = dict(cf.get())
+    if "LEIs" not in data:
+        raise kering.ConfigurationError("invalid configuration, no LEIs available to accept")
+
+    leis = data.get("LEIs")
+    if not isinstance(leis, list) or len(leis) == 0:
+        raise kering.ConfigurationError("invalid configuration, invalid LEIs in configuration")
+
+    authorizer = Authorizer(hby, vdb, reger, leis)
+
+    # witq = agenting.WitnessInquisitor(hby=hby)
+    # monitor = Monitorer()
+
+    return [AuthorizationDoer(authorizer)]
+
+
+class Authorizer:
     """
     Authorizer is responsible for comminucating the receipt and successful verification
     of credential presentation and revocation messages from external third parties via
@@ -31,30 +47,24 @@ class Authorizer(doing.DoDoer):
 
     TimeoutAuth = 600
 
-    def __init__(self, hby, hab, vdb, reger, leis):
+    def __init__(self, hby, vdb, reger, leis):
         """
-
         Create a communicator capable of persistent processing of messages and performing
         web hook calls.
 
         Parameters:
             hby (Habery): identifier database environment
-            hab (Hab): identifier environment of this Authorizer.  Used to sign hook calls
             vdb (VerifierBaser): communication escrow database environment
             reger (Reger): credential registry and database
+            leis (list): list of str LEIs to accept credential presentations from
 
         """
         self.hby = hby
-        self.hab = hab
         self.vdb = vdb
         self.reger = reger
         self.leis = leis
 
-        self.witq = agenting.WitnessInquisitor(hby=hby)
-
         self.clients = dict()
-
-        super(Authorizer, self).__init__(doers=[self.witq, doing.doify(self.escrowDo), doing.doify(self.monitorDo)])
 
     def processPresentations(self):
 
@@ -118,69 +128,6 @@ class Authorizer(doing.DoDoer):
                 self.vdb.rev.rem(keys=(said,))
                 self.vdb.revk.pin(keys=(said, dater.qb64), val=creder)
 
-    def escrowDo(self, tymth, tock=1.0):
-        """ Process escrows of comms pipeline
-
-        Steps involve:
-           1. Sending local event with sig to other participants
-           2. Waiting for signature threshold to be met.
-           3. If elected and delegated identifier, send complete event to delegator
-           4. If delegated, wait for delegator's anchor
-           5. If elected, send event to witnesses and collect receipts.
-           6. Otherwise, wait for fully receipted event
-
-        Parameters:
-            tymth (function): injected function wrapper closure returned by .tymen() of
-                Tymist instance. Calling tymth() returns associated Tymist .tyme.
-            tock (float): injected initial tock value.  Default to 1.0 to slow down processing
-
-        """
-        # enter context
-        self.wind(tymth)
-        self.tock = tock
-        _ = (yield self.tock)
-
-        while True:
-            try:
-                self.processEscrows()
-            except Exception as e:
-                print(e)
-
-            yield 0.5
-
-    def monitorDo(self, tymth, tock=1.0):
-        """ Process active account AIDs to update on rotations
-
-        Parameters:
-            tymth (function): injected function wrapper closure returned by .tymen() of
-                Tymist instance. Calling tymth() returns associated Tymist .tyme.
-            tock (float): injected initial tock value.  Default to 1.0 to slow down processing
-
-        """
-        # enter context
-        self.wind(tymth)
-        self.tock = tock
-        _ = (yield self.tock)
-
-        while True:
-            for (said,), (prefixer, seqner) in self.vdb.accts.getItemIter():
-                self.witq.query(src=self.hab.pre, pre=prefixer.qb64)
-
-                kever = self.hby.kevers[prefixer.qb64]
-                if kever.sner.num > seqner.num:
-                    print("Identifier rotation detected")
-                    creder = self.reger.creds.get(keys=(said,))
-                    match creder.schema:
-                        case Schema.ECR_SCHEMA_SAID:
-                            user = creder.subject["LEI"]
-                        case _:
-                            continue
-
-                    self.vdb.accts.pin(keys=(creder.said,), val=(kever.prefixer, kever.sner))
-                yield 1.0
-
-            yield 5.0
-
     def processEscrows(self):
         """
         Process credental presentation pipelines
@@ -188,3 +135,69 @@ class Authorizer(doing.DoDoer):
         """
         self.processPresentations()
         self.processRevocations()
+
+
+class AuthorizationDoer(doing.Doer):
+
+    def __init__(self, authn):
+        self.authn = authn
+        super(AuthorizationDoer, self).__init__()
+
+    def recur(self, tyme):
+        """ Process all escrows once per recurrence. """
+        self.authn.processEscrows()
+
+        return False
+
+
+class Monitorer(doing.Doer):
+    """ Class to Monitor key state of tracked identifiers and revocation state of their credentials
+
+    WORK IN PROGRESS
+    """
+
+    def __init__(self, hby, hab, vdb, reger, witq):
+        """
+        Create a communicator capable of persistent processing of messages and performing
+        web hook calls.
+
+        Parameters:
+            hby (Habery): identifier database environment
+            hab (Hab): AID environment for default identifier
+            vdb (VerifierBaser): communication escrow database environment
+            reger (Reger): credential registry and database
+            witq (WitnessInquisitor): utility for querying witnesses for updated KEL information
+
+        """
+
+        self.witq = witq
+        self.hby = hby,
+        self.hab = hab,
+        self.vdb = vdb
+        self.reger = reger,
+
+        super(Monitorer, self).__init__()
+
+    def recur(self, tymth):
+        """ Process active account AIDs to update on rotations
+
+        Parameters:
+            tymth (function): injected function wrapper closure returned by .tymen() of
+                Tymist instance. Calling tymth() returns associated Tymist .tyme.
+
+        """
+        for (said,), (prefixer, seqner) in self.vdb.accts.getItemIter():
+            self.witq.query(src=self.hab.pre, pre=prefixer.qb64)
+
+            kever = self.hby.kevers[prefixer.qb64]
+            if kever.sner.num > seqner.num:
+                print("Identifier rotation detected")
+                creder = self.reger.creds.get(keys=(said,))
+                match creder.schema:
+                    case Schema.ECR_SCHEMA_SAID:
+                        user = creder.subject["LEI"]
+                    case _:
+                        continue
+
+                self.vdb.accts.pin(keys=(creder.said,), val=(kever.prefixer, kever.sner))
+

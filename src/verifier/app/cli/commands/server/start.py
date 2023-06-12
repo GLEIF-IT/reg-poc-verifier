@@ -11,7 +11,9 @@ import hio.core.tcp
 from hio.core import http
 from keri.app import keeping, configing, habbing, oobiing
 from keri.app.cli.common import existing
-from verifier.core import verifying
+from keri.vdr import viring
+
+from verifier.core import verifying, authorizing, basing
 
 parser = argparse.ArgumentParser(description='Launch web server capable of serving KERI AIDs as did:web DIDs')
 parser.set_defaults(handler=lambda args: launch(args),
@@ -77,6 +79,9 @@ def launch(args):
     hbyDoer = habbing.HaberyDoer(habery=hby)  # setup doer
     obl = oobiing.Oobiery(hby=hby)
 
+    reger = viring.Reger(name=hby.name, temp=hby.temp)
+    vdb = basing.VerifierBaser(name=hby.name)
+
     app = falcon.App(
         middleware=falcon.CORSMiddleware(
             allow_origins='*',
@@ -95,9 +100,10 @@ def launch(args):
     server = http.Server(port=httpPort, app=app, servant=servant)
     httpServerDoer = http.ServerDoer(server=server)
 
-    doers = obl.doers + [hbyDoer, httpServerDoer]
+    verifying.setup(app, hby=hby, vdb=vdb, reger=reger)
+    authDoers = authorizing.setup(hby, vdb=vdb, reger=reger, cf=cf)
 
-    verifying.setup(app, hby=hby, cf=cf)
+    doers = obl.doers + authDoers + [hbyDoer, httpServerDoer]
 
     print(f"vLEI Verification Service running on: {httpPort}")
     return doers

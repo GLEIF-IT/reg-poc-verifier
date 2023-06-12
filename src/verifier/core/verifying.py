@@ -2,24 +2,20 @@ import json
 
 import falcon
 from keri.core import coring, parsing
-from keri.vdr import verifying, eventing, viring
-
-from verifier.core import basing
+from keri.vdr import verifying, eventing
 
 
-def setup(app, hby, cf):
+def setup(app, hby, vdb, reger):
     """ Set up verifying endpoints to process vLEI credential verifications
 
     Parameters:
         app (App): Falcon app to register endpoints against
         hby (Habery): Database environment for exposed KERI AIDs
-        cf (Configer): Configuration loader
+        vdb (VerifierBaser): Database environment for the verifier
+        reger (Reger): Database environment for credential registries
 
     """
-    # TODO: Load white list of LEIs from cf here.
-    vdb = basing.VerifierBaser(name=hby.name)
 
-    reger = viring.Reger(name=hby.name, temp=hby.temp)
     tvy = eventing.Tevery(reger=reger, db=hby.db)
     vry = verifying.Verifier(hby=hby, reger=reger)
 
