@@ -1,7 +1,9 @@
 import json
 
 import falcon
-from keri.core import coring
+from keri.core import coring, parsing
+from keri.vdr import verifying, eventing, viring
+
 from verifier.core import basing
 
 
@@ -17,20 +19,26 @@ def setup(app, hby, cf):
     # TODO: Load white list of LEIs from cf here.
     vdb = basing.VerifierBaser(name=hby.name)
 
-    loadEnds(app, hby, vdb)
+    reger = viring.Reger(name=hby.name, temp=hby.temp)
+    tvy = eventing.Tevery(reger=reger, db=hby.db)
+    vry = verifying.Verifier(hby=hby, reger=reger)
+
+    loadEnds(app, hby, vdb, tvy, vry)
 
 
-def loadEnds(app, hby, vdb):
+def loadEnds(app, hby, vdb, tvy, vry):
     """ Load and map endpoints to process vLEI credential verifications
 
     Parameters:
         app (App): Falcon app to register endpoints against
         hby (Habery): Database environment for exposed KERI AIDs
         vdb (VerifierBaser): Verifier database environment
+        tvy (Tevery): transaction event log event processor
+        vry (Verifier): credential verification processor
 
     """
 
-    presentEnd = PresentationCollectionEndpoint(hby, vdb)
+    presentEnd = PresentationCollectionEndpoint(hby, vdb, tvy, vry)
     app.add_route("/presentations", presentEnd)
     presentResEnd = PresentationResourceEnd(hby, vdb)
     app.add_route("/presentations/{aid}", presentResEnd)
@@ -43,18 +51,35 @@ def loadEnds(app, hby, vdb):
 
 class PresentationCollectionEndpoint:
 
-    def __init__(self, hby, vdb):
+    def __init__(self, hby, vdb, tvy, vry):
         self.hby = hby
         self.vdb = vdb
+        self.tvy = tvy
+        self.vry = vry
 
     def on_post(self, req, rep):
-        payload = req.body
-        sender = payload["i"]
-        said = payload["a"] if "a" in payload else payload["n"]
+        if req.content_type not in ("application/json+cesr",):
+            raise falcon.HTTPBadRequest(description=f"invalid content type={req.content_type} for VC presentation")
 
-        print(f"Credential {said} presented from {sender}")
+        ims = req.bounded_stream.read()
 
-        prefixer = coring.Prefixer(qb64=sender)
+        parsing.Parser().parse(ims=ims,
+                               kvy=self.hby.kvy,
+                               tvy=self.tvy,
+                               vry=self.vry)
+
+        if not self.vry.cues:
+            raise falcon.HTTPBadRequest(description="no valid credential found in body of request")
+
+        msg = self.vry.cues.popleft()
+        creder = msg["creder"]
+
+        said = creder.said
+        issuee = creder.subject["i"]
+
+        print(f"Credential {said} presented from {issuee}")
+
+        prefixer = coring.Prefixer(qb64=issuee)
         saider = coring.Saider(qb64=said)
         now = coring.Dater()
 

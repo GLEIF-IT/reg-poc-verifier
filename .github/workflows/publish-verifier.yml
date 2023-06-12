@@ -24,15 +24,15 @@ jobs:
         id: meta
         uses: docker/metadata-action@v4
         with:
-          images: WebOfTrust/keria
+          images: GLEIF-it/reg-poc-verifier
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          file: images/keria.dockerfile
-          push: true
-          tags: |
-            WebOfTrust/keria:${{ github.event.inputs.version }}
-            WebOfTrust/keria:latest
-          labels: ${{ github.event.inputs.version }}
+#      - name: Build and push Docker image
+#        uses: docker/build-push-action@v3
+#        with:
+#          context: .
+#          file: images/verifier.dockerfile
+#          push: true
+#          tags: |
+#            WebOfTrust/keria:${{ github.event.inputs.version }}
+#            WebOfTrust/keria:latest
+#          labels: ${{ github.event.inputs.version }}
