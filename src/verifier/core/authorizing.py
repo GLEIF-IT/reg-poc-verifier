@@ -87,20 +87,24 @@ class Authorizer:
 
     def processEcr(self, creder):
         if creder.subject["i"] not in self.hby.kevers:
+            print(f"unknown presenter {creder.subject['i']}")
             return
 
         kever = self.hby.kevers[creder.subject["i"]]
 
         LEI = creder.subject["LEI"]
         if LEI not in self.leis:
+            print(f"LEI: {LEI} not allowed")
             return
 
         role = creder.subject["engagementContextRole"]
 
         if role not in (EBA_DOCUMENT_SUBMITTER_ROLE,):
+            print(f"{role} in not a valid submitter role")
             return
 
-        self.vdb.accts.pin(keys=(kever.pre,), val=creder.saider)
+        print("Successful authentication, storing user.")
+        self.vdb.accts.pin(keys=(kever.serder.pre,), val=creder.saider)
 
     def processRevocations(self):
 

@@ -15,11 +15,11 @@ class VerifierBaser(dbing.LMDBer):
     intended to be read and dismissed by the controller of the agent.
 
     """
-    TailDirPath = "verifier/db"
-    AltTailDirPath = ".verifier/db"
-    TempPrefix = "verifier_db_"
+    TailDirPath = "keri/vdb"
+    AltTailDirPath = ".verifier/vdb"
+    TempPrefix = "keri_vdb_"
 
-    def __init__(self, name="ver", headDirPath=None, reopen=True, **kwa):
+    def __init__(self, name="vdb", headDirPath=None, reopen=True, **kwa):
         """
 
         Parameters:
@@ -36,7 +36,7 @@ class VerifierBaser(dbing.LMDBer):
         self.accts = None
         self.revk = None
 
-        self.ack = None
+        self.imgs = None
 
         super(VerifierBaser, self).__init__(name=name, headDirPath=headDirPath, reopen=reopen, **kwa)
 
@@ -59,5 +59,8 @@ class VerifierBaser(dbing.LMDBer):
 
         # presentations with resolved credentials that need to be sent to the hook
         self.accts = subing.CesrSuber(db=self, subkey='accts', klas=coring.Saider)
+
+        # Chunked file data for uploaded reports
+        self.imgs = self.env.open_db(key=b'imgs.')
 
         return self.env

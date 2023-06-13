@@ -24,8 +24,8 @@ parser.add_argument('-p', '--http',
                     help="Port on which to listen for did:web requests")
 parser.add_argument('-n', '--name',
                     action='store',
-                    default="dkr",
-                    help="Name of controller. Default is dkr.")
+                    default="vdb",
+                    help="Name of controller. Default is vdb.")
 parser.add_argument('--base', '-b', help='additional optional prefix to file location of KERI keystore',
                     required=False, default="")
 parser.add_argument('--passcode', help='22 character encryption passcode for keystore (is not saved)',
@@ -81,6 +81,7 @@ def launch(args):
 
     reger = viring.Reger(name=hby.name, temp=hby.temp)
     vdb = basing.VerifierBaser(name=hby.name)
+    print(vdb.path)
 
     app = falcon.App(
         middleware=falcon.CORSMiddleware(

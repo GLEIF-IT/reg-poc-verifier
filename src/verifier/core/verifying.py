@@ -34,10 +34,10 @@ def loadEnds(app, hby, vdb, tvy, vry):
 
     """
 
-    presentEnd = PresentationCollectionEndpoint(hby, vdb, tvy, vry)
-    app.add_route("/presentations", presentEnd)
-    presentResEnd = PresentationResourceEnd(hby, vdb)
-    app.add_route("/presentations/{aid}", presentResEnd)
+    presentEnd = PresentationResourceEndpoint(hby, vdb, tvy, vry)
+    app.add_route("/presentations/{said}", presentEnd)
+    presentResEnd = AuthorizationResourceEnd(hby, vdb)
+    app.add_route("/authorizations/{aid}", presentResEnd)
 
     requestEnd = RequestVerifierResourceEnd(hby=hby, vdb=vdb)
     app.add_route("/request/verify/{aid}", requestEnd)
@@ -45,7 +45,7 @@ def loadEnds(app, hby, vdb, tvy, vry):
     return []
 
 
-class PresentationCollectionEndpoint:
+class PresentationResourceEndpoint:
 
     def __init__(self, hby, vdb, tvy, vry):
         self.hby = hby
@@ -53,7 +53,7 @@ class PresentationCollectionEndpoint:
         self.tvy = tvy
         self.vry = vry
 
-    def on_post(self, req, rep):
+    def on_put(self, req, rep, said):
         if req.content_type not in ("application/json+cesr",):
             raise falcon.HTTPBadRequest(description=f"invalid content type={req.content_type} for VC presentation")
 
@@ -68,24 +68,20 @@ class PresentationCollectionEndpoint:
             raise falcon.HTTPBadRequest(description="no valid credential found in body of request")
 
         msg = self.vry.cues.popleft()
-        creder = msg["creder"]
+        if "creder" not in msg:
+            raise falcon.HTTPBadRequest(description="unable to parse credential in body of request")
 
-        said = creder.said
-        issuee = creder.subject["i"]
+        print(f"Credential {said} presented.")
 
-        print(f"Credential {said} presented from {issuee}")
-
-        prefixer = coring.Prefixer(qb64=issuee)
         saider = coring.Saider(qb64=said)
         now = coring.Dater()
 
-        self.vdb.snd.pin(keys=(saider.qb64,), val=prefixer)
         self.vdb.iss.pin(keys=(saider.qb64,), val=now)
 
         rep.status = falcon.HTTP_ACCEPTED
 
 
-class PresentationResourceEnd:
+class AuthorizationResourceEnd:
 
     def __init__(self, hby, vdb):
         self.hby = hby
@@ -103,14 +99,14 @@ class PresentationResourceEnd:
 
         """
         if aid not in self.hby.kevers:
-            raise falcon.HTTPNotFound(description=f"unknown {aid} used to sign header")
+            raise falcon.HTTPNotFound(description=f"unknown AID: {aid}")
 
-        if said := self.vdb.acct.get(keys=(aid,)) is None:
+        if (saider := self.vdb.accts.get(keys=(aid,))) is None:
             raise falcon.HTTPForbidden(description=f"identifier {aid} has no valid credential for access")
 
         body = dict(
             aid=aid,
-            said=said
+            said=saider.qb64
         )
 
         rep.status = falcon.HTTP_OK
@@ -130,7 +126,7 @@ class RequestVerifierResourceEnd:
         if aid not in self.hby.kevers:
             raise falcon.HTTPNotFound(description=f"unknown {aid} used to sign header")
 
-        if self.vdb.acct.get(keys=(aid,)) is None:
+        if self.vdb.accts.get(keys=(aid,)) is None:
             raise falcon.HTTPForbidden(description=f"identifier {aid} has no valid credential for access")
 
         kever = self.hby.kevers[aid]
