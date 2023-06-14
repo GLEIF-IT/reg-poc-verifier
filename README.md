@@ -1,6 +1,16 @@
 # reg-poc-verifier
 Regulatory PoC vLEI Verification Service
 
+## Launching Service
+To initiate this service, run the following commands from the root directory of this repository.  =First create the
+database environment for the service with:
+
+`kli init --name vdb --nopasscode --config-dir scripts --config-file verifier-config.json`
+
+The the service can be launched with:
+
+`verifier server start --config-dir scripts --config-file verifier-config.json`
+
 
 ## Registering an AID as a Valid Report Submitter
 For an AID to be registered as a valid report submitter it must use the `/presentations/{said}` API to present a valid
