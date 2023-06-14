@@ -13,7 +13,7 @@ from keri.app import keeping, configing, habbing, oobiing
 from keri.app.cli.common import existing
 from keri.vdr import viring
 
-from verifier.core import verifying, authorizing, basing
+from verifier.core import verifying, authorizing, basing, reporting
 
 parser = argparse.ArgumentParser(description='Launch web server capable of serving KERI AIDs as did:web DIDs')
 parser.set_defaults(handler=lambda args: launch(args),
@@ -81,7 +81,6 @@ def launch(args):
 
     reger = viring.Reger(name=hby.name, temp=hby.temp)
     vdb = basing.VerifierBaser(name=hby.name)
-    print(vdb.path)
 
     app = falcon.App(
         middleware=falcon.CORSMiddleware(
@@ -102,6 +101,7 @@ def launch(args):
     httpServerDoer = http.ServerDoer(server=server)
 
     verifying.setup(app, hby=hby, vdb=vdb, reger=reger)
+    reporting.setup(app=app, hby=hby, vdb=vdb)
     authDoers = authorizing.setup(hby, vdb=vdb, reger=reger, cf=cf)
 
     doers = obl.doers + authDoers + [hbyDoer, httpServerDoer]

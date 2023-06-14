@@ -5,8 +5,19 @@ verifier.core.basing module
 
 Database support
 """
+from dataclasses import dataclass
+
 from keri.core import coring
-from keri.db import dbing, subing
+from keri.db import dbing, subing, koming
+from keri.db.subing import CesrIoSetSuber
+
+
+@dataclass
+class ReportStats:
+    status: str = None
+    contentType: str = None
+    size: int = 0
+    message: str = ""
 
 
 class VerifierBaser(dbing.LMDBer):
@@ -28,15 +39,23 @@ class VerifierBaser(dbing.LMDBer):
             reopen:
             kwa:
         """
-        self.snd = None
-
         self.iss = None
         self.rev = None
 
         self.accts = None
         self.revk = None
 
+        # Report database linking AID of uploader to SAID of uploaded report
+        self.rpts = None
+
+        # Report SAIDs indexed by status
+        self.stts = None
+
+        # Data chunks for uploaded report, indexed by SAID plus chunk index
         self.imgs = None
+
+        # Komer instance of ReportStats data class, keyed by SAID
+        self.stats = None
 
         super(VerifierBaser, self).__init__(name=name, headDirPath=headDirPath, reopen=reopen, **kwa)
 
@@ -48,9 +67,6 @@ class VerifierBaser(dbing.LMDBer):
         """
         super(VerifierBaser, self).reopen(**kwa)
 
-        # Database of senders of the presentation or revocation messages
-        self.snd = subing.CesrSuber(db=self, subkey='snd.', klas=coring.Prefixer)
-
         # presentations that are waiting for the credential to be received and parsed
         self.iss = subing.CesrSuber(db=self, subkey='iss.', klas=coring.Dater)
 
@@ -60,7 +76,18 @@ class VerifierBaser(dbing.LMDBer):
         # presentations with resolved credentials that need to be sent to the hook
         self.accts = subing.CesrSuber(db=self, subkey='accts', klas=coring.Saider)
 
-        # Chunked file data for uploaded reports
+        # Report database linking AID of uploader to DIG of uploaded report
+        self.rpts = CesrIoSetSuber(db=self, subkey='rpts.', klas=coring.Diger)
+
+        # Report DIGs indexed by status
+        self.stts = CesrIoSetSuber(db=self, subkey='stts.', klas=coring.Diger)
+
+        # Data chunks for uploaded report, indexed by DIG plus chunk index
         self.imgs = self.env.open_db(key=b'imgs.')
+
+        # Komer instance of ReportStats data class, keyed by SAID
+        self.stats = koming.Komer(db=self,
+                                  subkey='stats.',
+                                  schema=ReportStats)  # Use seperator not a allowed in URLs so no splitting occurs.
 
         return self.env

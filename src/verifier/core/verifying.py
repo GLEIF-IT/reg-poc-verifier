@@ -110,7 +110,7 @@ class AuthorizationResourceEnd:
         )
 
         rep.status = falcon.HTTP_OK
-        rep.body = json.dumps(body).encode("utf-8")
+        rep.data = json.dumps(body).encode("utf-8")
 
 
 class RequestVerifierResourceEnd:
