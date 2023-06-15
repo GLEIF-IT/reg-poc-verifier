@@ -101,10 +101,10 @@ def launch(args):
     httpServerDoer = http.ServerDoer(server=server)
 
     verifying.setup(app, hby=hby, vdb=vdb, reger=reger)
-    reporting.setup(app=app, hby=hby, vdb=vdb)
+    reportDoers = reporting.setup(app=app, hby=hby, vdb=vdb)
     authDoers = authorizing.setup(hby, vdb=vdb, reger=reger, cf=cf)
 
-    doers = obl.doers + authDoers + [hbyDoer, httpServerDoer]
+    doers = obl.doers + authDoers + reportDoers + [hbyDoer, httpServerDoer]
 
     print(f"vLEI Verification Service running on: {httpPort}")
     return doers

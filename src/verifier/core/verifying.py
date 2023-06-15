@@ -59,17 +59,23 @@ class PresentationResourceEndpoint:
 
         ims = req.bounded_stream.read()
 
+        self.vry.cues.clear()
         parsing.Parser().parse(ims=ims,
                                kvy=self.hby.kvy,
                                tvy=self.tvy,
                                vry=self.vry)
 
-        if not self.vry.cues:
-            raise falcon.HTTPBadRequest(description="no valid credential found in body of request")
+        found = False
+        while self.vry.cues:
+            msg = self.vry.cues.popleft()
+            if "creder" in msg:
+                creder = msg["creder"]
+                if creder.said == said:
+                    found = True
+                    break
 
-        msg = self.vry.cues.popleft()
-        if "creder" not in msg:
-            raise falcon.HTTPBadRequest(description="unable to parse credential in body of request")
+        if not found:
+            raise falcon.HTTPBadRequest(description=f"credential {said} not processed in body of request")
 
         print(f"Credential {said} presented.")
 

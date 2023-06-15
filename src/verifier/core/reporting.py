@@ -1,14 +1,19 @@
 import json
+import os
+import tempfile
+import zipfile
 from collections import namedtuple
 from dataclasses import asdict
 
 import falcon
+from hio.base import doing
+from keri import kering
 from keri.core import coring
 
 from verifier.core.basing import ReportStats
 
 
-# SAID field labels
+# Report Statuses.
 Reportage = namedtuple("Reportage", "accepted verified failed")
 
 ReportStatus = Reportage(accepted="accepted", verified="verified", failed="failed")
@@ -16,8 +21,11 @@ ReportStatus = Reportage(accepted="accepted", verified="verified", failed="faile
 
 def setup(app, hby, vdb):
     filer = Filer(vdb=vdb)
+    rverfer = ReportVerifier(hby=hby, vdb=vdb, filer=filer)
 
     loadEnds(app, hby, vdb, filer)
+
+    return [rverfer]
 
 
 def loadEnds(app, hby, vdb, filer):
@@ -30,9 +38,11 @@ class Filer:
     def __init__(self, vdb):
         self.vdb = vdb
 
-    def create(self, aid, dig, typ, stream):
+    def create(self, aid, dig, filename, typ, stream):
         self.vdb.delTopVal(db=self.vdb.imgs, key=dig.encode("utf-8"))
         stats = ReportStats(
+            submitter=aid,
+            filename=filename,
             status=ReportStatus.accepted,
             contentType=typ,
             size=0
@@ -51,7 +61,7 @@ class Filer:
         diger = coring.Diger(qb64=dig)
         self.vdb.rpts.add(keys=(aid,), val=diger)
         self.vdb.stts.add(keys=(stats.status,), val=diger)
-        self.vdb.stats.put(keys=(dig,), val=stats)
+        self.vdb.stats.pin(keys=(dig,), val=stats)
 
     def get(self, dig):
         """ Return report stats for given report. """
@@ -84,6 +94,23 @@ class Filer:
                 break
             yield bytes(chunk)
             idx += 1
+
+    def getAcceptedIter(self):
+        for diger in self.vdb.stts.getIter(keys=(ReportStatus.accepted, )):
+            yield diger
+
+    def update(self, diger, status, msg=None):
+        if (stats := self.vdb.stats.get(keys=(diger.qb64,))) is None:
+            return False
+
+        self.vdb.stts.rem(keys=(stats.status,), val=diger)
+
+        stats.status = status
+        if msg is not None:
+            stats.message = msg
+
+        self.vdb.stts.add(keys=(stats.status,), val=diger)
+        self.vdb.stats.pin(keys=(diger.qb64,), val=stats)
 
 
 class ReportResourceEnd:
@@ -149,5 +176,129 @@ class ReportResourceEnd:
         if self.vdb.accts.get(keys=(aid,)) is None:
             raise falcon.HTTPForbidden(description=f"identifier {aid} has no valid credential for access")
 
-        self.filer.create(aid=aid, dig=dig, typ=req.content_type, stream=req.bounded_stream)
+        form = req.get_media()
+        upload = False
+        for part in form:
+            if part.name == "upload":
+                self.filer.create(aid=aid, dig=dig, filename=part.secure_filename, typ=part.content_type,
+                                  stream=part.stream)
+                upload = True
+
+        if not upload:
+            raise falcon.HTTPBadRequest(description=f"content type must be multipart/form-data with an upload"
+                                                    f" file")
+
         rep.status = falcon.HTTP_202
+
+
+class ReportVerifier(doing.Doer):
+
+    def __init__(self, hby, vdb, filer, **kwargs):
+        self.hby = hby
+        self.vdb = vdb
+        self.filer = filer
+
+        super(ReportVerifier, self).__init__(**kwargs)
+
+    def recur(self, tyme):
+        for diger in self.filer.getAcceptedIter():
+            try:
+                stats = self.vdb.stats.get(keys=(diger.qb64,))
+                print(f"Processing {stats.filename}:\n "
+                      f"\tType={stats.contentType}\n"
+                      f"\tSize={stats.size}")
+                with tempfile.TemporaryFile("w+b") as tf:
+
+                    for chunk in self.filer.getData(diger.qb64):
+                        tf.write(chunk)
+
+                    tf.seek(0)
+
+                    with tempfile.TemporaryDirectory() as tempdirname:
+                        z = zipfile.ZipFile(tf)
+                        z.extractall(path=tempdirname)
+
+                        files = []
+                        manifest = None
+                        for root, dirs, files in os.walk(tempdirname):
+                            if "META-INF" not in dirs or 'reports' not in dirs:
+                                continue
+
+                            metaDir = os.path.join(root, 'META-INF')
+                            name = os.path.join(root, 'META-INF', 'reports.json')
+                            if not os.path.exists(name):
+                                continue
+
+                            f = open(name, 'r')
+                            manifest = json.load(f)
+                            if "documentInfo" not in manifest:
+                                raise kering.ValidationError("Invalid manifest file in report package, missing "
+                                                             "'documentInfo")
+                            reportsDir = os.path.join(root, 'reports')
+                            files = os.listdir(reportsDir)
+
+                        if manifest is None:
+                            raise kering.ValidationError("No manifest in file, invalid signed report package")
+
+                        docInfo = manifest["documentInfo"]
+
+                        if "signatures" not in docInfo:
+                            raise kering.ValidationError("No signatures found in manifest file")
+
+                        signatures = docInfo["signatures"]
+                        signed = []
+                        for signature in signatures:
+                            try:
+                                file = signature["file"]
+                                fullpath = os.path.normpath(os.path.join(metaDir, file))
+                                signed.append(os.path.basename(fullpath))
+                                f = open(fullpath, 'r')
+                                ser = f.read()
+                                f.close()
+
+                                aid = signature["aid"]
+
+                                # First check to ensure signature if from submitter, otherwise skip
+                                if aid != stats.submitter:
+                                    continue
+
+                                # Now ensure we know who this AID is and that we have their key state
+                                if aid not in self.hby.kevers:
+                                    raise kering.ValidationError(f"signature from unknown AID {aid}")
+
+                                kever = self.hby.kevers[aid]
+                                sigers = [coring.Siger(qb64=sig) for sig in signature["sigs"]]
+                                if len(sigers) == 0:
+                                    raise kering.ValidationError(f"missing signatures on {file}")
+
+                                for siger in sigers:
+                                    siger.verfer = kever.verfers[siger.index]  # assign verfer
+                                    if not siger.verfer.verify(siger.raw, ser):  # verify each sig
+                                        raise kering.ValidationError(f"signature {siger.index} invalid for {file}")
+
+                            except KeyError as e:
+                                raise kering.ValidationError(f"Invalid signature in manifest signature list"
+                                                             f"missing '{e.args[0]}'")
+                            except OSError:
+                                raise kering.ValidationError(f"signature element={signature} point to invalid file")
+
+                        diff = set(files) - set(signed)
+                        if len(diff) == 0:
+                            msg = f"All {len(files)} files in report package have been signed by " \
+                                  f"submitter ({stats.submitter})."
+                            self.filer.update(diger, ReportStatus.verified, msg)
+                            print(msg)
+                        else:
+                            msg = f"{len(diff)} files from report package not signed {diff}, {signed}"
+                            self.filer.update(diger, ReportStatus.failed, msg)
+                            print(msg)
+
+            except (kering.ValidationError, zipfile.BadZipFile) as e:
+                self.filer.update(diger, ReportStatus.failed, e.args[0])
+                print(e.args[0])
+
+
+
+
+
+
