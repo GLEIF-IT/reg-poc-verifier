@@ -59,9 +59,6 @@ def sign(file, out):
                 json.dump(manifest, f)
 
         shutil.make_archive(out.rstrip(".zip"), 'zip', tempdirname)
-        # with zipfile.ZipFile(out, 'x') as zipd:
-        #     # Traverse all files in directory
-        #     zipdir(topdir, zipd)
 
 
 def zipdir(path, ziph):
