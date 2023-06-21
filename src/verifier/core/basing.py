@@ -14,6 +14,8 @@ from keri.db.subing import CesrIoSetSuber
 
 @dataclass
 class ReportStats:
+    submitter: str = None
+    filename: str = None
     status: str = None
     contentType: str = None
     size: int = 0
