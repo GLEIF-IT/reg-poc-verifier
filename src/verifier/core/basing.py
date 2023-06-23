@@ -47,7 +47,6 @@ class VerifierBaser(dbing.LMDBer):
         self.rev = None
 
         self.accts = None
-        self.revk = None
 
         # Report database linking AID of uploader to SAID of uploaded report
         self.rpts = None
