@@ -1,13 +1,13 @@
 # -*- encoding: utf-8 -*-
 """
-dkr.app.cli.commands module
+verifier.app.cli.commands.server module
+
+Verification service main command line handler.  Starts service using the provided parameters
 
 """
 import argparse
 
 import falcon
-import hio
-import hio.core.tcp
 from hio.core import http
 from keri.app import keeping, configing, habbing, oobiing
 from keri.app.cli.common import existing
@@ -15,13 +15,13 @@ from keri.vdr import viring
 
 from verifier.core import verifying, authorizing, basing, reporting
 
-parser = argparse.ArgumentParser(description='Launch web server capable of serving KERI AIDs as did:web DIDs')
+parser = argparse.ArgumentParser(description='Launch vLEI Verification Service')
 parser.set_defaults(handler=lambda args: launch(args),
                     transferable=True)
 parser.add_argument('-p', '--http',
                     action='store',
                     default=7676,
-                    help="Port on which to listen for did:web requests")
+                    help="Port on which to listen for verification requests")
 parser.add_argument('-n', '--name',
                     action='store',
                     default="vdb",
@@ -40,19 +40,21 @@ parser.add_argument('--config-file',
                     action='store',
                     default="dkr",
                     help="configuration filename override")
-parser.add_argument("--keypath", action="store", required=False, default=None)
-parser.add_argument("--certpath", action="store", required=False, default=None)
-parser.add_argument("--cafilepath", action="store", required=False, default=None)
 
 
 def launch(args):
+    """ Launch the verification service.
+
+    Parameters:
+        args (Namespace): command line namespace object containing the parsed command line arguments
+
+    Returns:
+
+    """
     name = args.name
     base = args.base
     bran = args.bran
     httpPort = args.http
-    keypath = args.keypath
-    certpath = args.certpath
-    cafilepath = args.cafilepath
 
     configFile = args.configFile
     configDir = args.configDir
@@ -88,16 +90,7 @@ def launch(args):
             allow_credentials='*',
             expose_headers=['cesr-attachment', 'cesr-date', 'content-type']))
 
-    if keypath is not None:
-        servant = hio.core.tcp.ServerTls(certify=False,
-                                         keypath=keypath,
-                                         certpath=certpath,
-                                         cafilepath=cafilepath,
-                                         port=httpPort)
-    else:
-        servant = None
-
-    server = http.Server(port=httpPort, app=app, servant=servant)
+    server = http.Server(port=httpPort, app=app)
     httpServerDoer = http.ServerDoer(server=server)
 
     verifying.setup(app, hby=hby, vdb=vdb, reger=reger)
@@ -106,5 +99,5 @@ def launch(args):
 
     doers = obl.doers + authDoers + reportDoers + [hbyDoer, httpServerDoer]
 
-    print(f"vLEI Verification Service running on: {httpPort}")
+    print(f"vLEI Verification Service running and listening on: {httpPort}")
     return doers

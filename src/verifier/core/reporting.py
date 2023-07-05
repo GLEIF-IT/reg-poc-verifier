@@ -16,10 +16,22 @@ from verifier.core.basing import ReportStats
 # Report Statuses.
 Reportage = namedtuple("Reportage", "accepted verified failed")
 
+# Referencable report status enumeration
 ReportStatus = Reportage(accepted="accepted", verified="verified", failed="failed")
 
 
 def setup(app, hby, vdb):
+    """  Set up module endpoints and dependencies
+
+    Parameters:
+        app (App): falcon HTTP web app
+        hby (Habery): identifier database environment
+        vdb (VerifierBaser): verifier database environment
+
+    Returns:
+        list: Doers (coroutines) required for this module
+
+    """
     filer = Filer(vdb=vdb)
     rverfer = ReportVerifier(hby=hby, vdb=vdb, filer=filer)
 
@@ -29,16 +41,47 @@ def setup(app, hby, vdb):
 
 
 def loadEnds(app, hby, vdb, filer):
+    """ Load and map endpoint objects to routes for this module
+
+    Parameters:
+        app (App): falcon HTTP web app
+        hby (Habery): identifier database environment
+        vdb (VerifierBaser): verifier database environment
+        filer (Filer): report status filer
+
+    """
     reportEnd = ReportResourceEnd(hby, vdb, filer)
     app.add_route("/reports/{aid}/{dig}", reportEnd)
 
 
 class Filer:
+    """ Report status filer
+
+    Business object for creating and maintaining report status updates for uploaded XBRL-CSV report packages.
+
+    """
 
     def __init__(self, vdb):
+        """  Create report status filer instance
+
+        Parameters:
+            vdb (VerifierBaser): verification database environment
+        """
         self.vdb = vdb
 
     def create(self, aid, dig, filename, typ, stream):
+        """ Create a new file upload with initial Accepted status.
+
+        This method creates the report upload status object and queues it for report verification processing
+
+        Parameters:
+            aid (str): qb64 AID of uploader
+            dig (str): qb64 digest of report content
+            filename (str): filename reported from multipart/form filename field
+            typ (str): content-type of file upload
+            stream (File): file like stream object to load the report data from
+
+        """
         self.vdb.delTopVal(db=self.vdb.imgs, key=dig.encode("utf-8"))
         stats = ReportStats(
             submitter=aid,
@@ -64,20 +107,19 @@ class Filer:
         self.vdb.stats.pin(keys=(dig,), val=stats)
 
     def get(self, dig):
-        """ Return report stats for given report. """
+        """ Return report stats for given report.
+
+         Parameters:
+            dig (str): qb64 digest of report content
+
+         Returns:
+             ReportStats:  Report stats for report with digest dig or None
+
+         """
         if (stats := self.vdb.stats.get(keys=(dig,))) is None:
             return None
 
         return stats
-
-    def set(self, dig, status):
-        """ Update status of previously created report """
-        if (stats := self.vdb.stats.get(keys=(dig,))) is None:
-            raise ValueError(f"report {dig} not found")
-
-        stats.status = status
-
-        self.vdb.stats.pin(dig, stats)
 
     def getData(self, dig):
         """ Generator that yields image data in 4k chunks for identifier
@@ -96,10 +138,21 @@ class Filer:
             idx += 1
 
     def getAcceptedIter(self):
+        """ Generator that yields Diger values for all reports currently in Accepted status
+
+        """
         for diger in self.vdb.stts.getIter(keys=(ReportStatus.accepted, )):
             yield diger
 
     def update(self, diger, status, msg=None):
+        """ Set new report status for report identifier
+
+        Parameters:
+            diger (Diger): Diger object of digest for report
+            status (str): new report status for report with digest dig
+            msg (str): optional status message for report
+
+        """
         if (stats := self.vdb.stats.get(keys=(diger.qb64,))) is None:
             return False
 
@@ -114,13 +167,56 @@ class Filer:
 
 
 class ReportResourceEnd:
+    """ Report resource endpoint capable of creating and retrieving report instances
+
+    This endpoint accepts multipart/form stream uploads of report zip files but only returns report status objects
+    on GET
+
+    """
 
     def __init__(self, hby, vdb, filer):
+        """ Create new report resource endpoint instance
+
+        Parameters:
+            hby (Habery): identifier database environment
+            vdb (VerifierBaser): verifier database environment
+            filer (Filer): report status filer
+
+        """
         self.hby = hby
         self.vdb = vdb
         self.filer = filer
 
-    def on_get(self, req, rep, aid, dig):
+    def on_get(self, _, rep, aid, dig):
+        """  Report Resource GET Method
+
+        Parameters:
+            _: falcon.Request HTTP request
+            rep: falcon.Response HTTP response
+            aid: qb64 identifier prefix of submitter
+            dig: qb64 Digest of report contents
+
+        ---
+         summary: Retriever file upload status.
+         description: Returns current status for previous submitted file identified by AID and DIG.
+         tags:
+            - Reports
+         parameters:
+           - in: path
+             name: aid
+             schema:
+                type: string
+             description: qb64 AID of submitter
+           - in: path
+             name: dig
+             schema:
+                type: string
+             description: qb64 hash digest of report contents
+         responses:
+           200:
+              description: Report successfully uploaded
+
+        """
         if aid not in self.hby.kevers:
             raise falcon.HTTPNotFound(description=f"unknown AID: {aid}")
 
@@ -147,27 +243,23 @@ class ReportResourceEnd:
          summary: Uploads an image to associate with identfier.
          description: Uploads an image to associate with identfier.
          tags:
-            - Contacts
+            - Reports
          parameters:
            - in: path
-             name: prefix
+             name: aid
              schema:
                 type: string
              description: identifier prefix to associate image to
          requestBody:
              required: true
              content:
-                image/jpg:
+                multipart/form:
                   schema:
-                    type: string
-                    format: binary
-                image/png:
-                  schema:
-                    type: string
+                    type: application/zip
                     format: binary
          responses:
-           200:
-              description: Image successfully uploaded
+           202:
+              description: Reprot submission accepted
 
         """
         if aid not in self.hby.kevers:
@@ -192,8 +284,29 @@ class ReportResourceEnd:
 
 
 class ReportVerifier(doing.Doer):
+    """ Doer (coroutine) capable of processing submitted report files
+
+    This coroutine recurs on the database up Accepted file uploads and processes them with the following steps:
+
+       1. Extracts content of zip file from database into temporary directory.
+       2. Ensures the zip file is a properly structured report package.
+       3. Finds all digital signatures specified in the report package manifest file.
+       4. Verifies the signatures for each file against the contents of the file.
+       5. Validates that the submitter has signed all files in the report package.
+
+
+    """
 
     def __init__(self, hby, vdb, filer, **kwargs):
+        """  Create report verifier instance to process report submissions
+
+        Parameters:
+            hby (Habery): identifier database environment
+            vdb (VerifierBaser): verifier database environment
+            filer (Filer): report status filer
+            **kwargs (dict): additional keyword arguments passed to the Doer super class
+
+        """
         self.hby = hby
         self.vdb = vdb
         self.filer = filer
@@ -201,6 +314,12 @@ class ReportVerifier(doing.Doer):
         super(ReportVerifier, self).__init__(**kwargs)
 
     def recur(self, tyme):
+        """ Loop on all accepted report uploads in each iteration.
+
+        Parameters:
+            tyme (float): relative cycle time
+
+        """
         for diger in self.filer.getAcceptedIter():
             try:
                 stats = self.vdb.stats.get(keys=(diger.qb64,))

@@ -2,6 +2,8 @@
 """
 kara.app.commands module
 
+Command line runner for app
+
 """
 import multicommand
 import logging
@@ -17,6 +19,7 @@ help.ogler.reopen(name="verifer", temp=True, clear=True)
 
 
 def main():
+    """ Command line process for main verification daemon """
     parser = multicommand.create_parser(commands)
     args = parser.parse_args()
 

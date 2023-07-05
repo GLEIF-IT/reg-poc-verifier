@@ -33,6 +33,6 @@ jobs:
 #          file: images/verifier.dockerfile
 #          push: true
 #          tags: |
-#            WebOfTrust/keria:${{ github.event.inputs.version }}
-#            WebOfTrust/keria:latest
+#            WebOfTrust/reg-poc-verifier:${{ github.event.inputs.version }}
+#            WebOfTrust/reg-poc-verifier:latest
 #          labels: ${{ github.event.inputs.version }}
