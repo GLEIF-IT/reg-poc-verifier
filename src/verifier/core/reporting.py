@@ -339,7 +339,7 @@ class ReportVerifier(doing.Doer):
 
                         files = []
                         manifest = None
-                        for root, dirs, files in os.walk(tempdirname):
+                        for root, dirs, _ in os.walk(tempdirname):
                             if "META-INF" not in dirs or 'reports' not in dirs:
                                 continue
 
