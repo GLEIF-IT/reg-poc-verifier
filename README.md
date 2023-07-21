@@ -1,5 +1,5 @@
 # reg-poc-verifier
-Regulatory PoC vLEI Verification Service
+A service to verify signatures created by AIDs using [KERI](https://keri.one).
 
 ## Architecture
 
