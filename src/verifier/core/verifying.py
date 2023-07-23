@@ -253,10 +253,10 @@ class RequestVerifierResourceEnd:
             raise falcon.HTTPForbidden(description=f"identifier {aid} has no valid credential for access")
 
         kever = self.hby.kevers[aid]
-        verfers = kever.ververs
+        verfers = kever.verfers
         cigar = coring.Cigar(qb64=sig)
 
-        if not verfers[0].verify(sig=cigar.raw, ser=data.decode("utf-8")):
+        if not verfers[0].verify(sig=cigar.raw, ser=data.encode("utf-8")):
             raise falcon.HTTPUnauthorized(description=f"{aid} provided invalid signature on request data")
 
         rep.status = falcon.HTTP_ACCEPTED
