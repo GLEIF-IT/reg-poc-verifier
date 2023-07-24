@@ -1,16 +1,45 @@
 # reg-poc-verifier
-Regulatory PoC vLEI Verification Service
+A service to verify signatures created by AIDs using [KERI](https://keri.one).
 
-## Launching Service
-To initiate this service, run the following commands from the root directory of this repository.  =First create the
-database environment for the service with:
+## Architecture
 
-`kli init --name vdb --nopasscode --config-dir scripts --config-file verifier-config.json`
+### Verifier (this service)
+The verifier uses [keripy](https://github.com/WebOfTRust/keripy) for verifying the requests:
 
-The the service can be launched with:
+To initiate this service, run the following commands from the root directory of this repository.
+First create the database environment for the service with:
 
-`verifier server start --config-dir scripts --config-file verifier-config.json`
+```
+kli init --name vdb --nopasscode --config-dir scripts --config-file verifier-config.json
+```
 
+This requires a running vLEI server and KERI witness network.
+
+The service can be launched with:
+
+```
+verifier server start --config-dir scripts --config-file verifier-config.json
+```
+
+### Webapp
+The web app (UI front-end) uses Signify/KERIA for selecting identifiers and credentials:
+
+See: [reg-poc-webapp](https://github.com/GLEIF-IT/reg-poc-webapp)
+
+### Server
+Provides the ability to:
+* Log in using a vLEI ECR
+* Upload signed files
+* Check the status of an upload
+
+See: [reg-poc-server](https://github.com/GLEIF-IT/reg-poc-server)
+
+### Additional service
+* KERI Witness Network
+* vLEI server
+* KERI Agent
+
+The deployment architecture is demonstrated in [reg-poc](https://github.com/GLEIF-IT/reg-poc)
 
 ## Registering an AID as a Valid Report Submitter
 For an AID to be registered as a valid report submitter it must use the `/presentations/{said}` API to present a valid
