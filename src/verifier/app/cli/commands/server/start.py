@@ -69,6 +69,7 @@ def launch(args):
     cf = configing.Configer(name=configFile,
                             base=base,
                             headDirPath=configDir,
+                            mode="rt",
                             temp=False,
                             reopen=True,
                             clear=False)
